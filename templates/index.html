@@ -1,0 +1,381 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AskMyDoc | AI Research Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">A</div>
+                <div>
+                    <h2>AskMyDoc</h2>
+                    <p>AI Research Assistant</p>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="workspace-heading">
+                <p class="section-label">YOUR WORKSPACE</p>
+                <span id="pdf-count" class="pdf-count">0 PDFs</span>
+            </div>
+
+                <div id="document-list" class="document-list">
+                    <p class="helper-text">No documents uploaded yet.</p>
+                </div>
+
+                <div class="upload-panel">
+                    <h3>Upload documents</h3>
+                    <p>Select one or more research PDFs to begin.</p>
+
+                    <form id="upload-form">
+                        <label class="file-picker" for="pdf-files">Choose PDF files</label>
+                        <input
+                            type="file"
+                            id="pdf-files"
+                            name="files"
+                            accept=".pdf,application/pdf"
+                            multiple
+                            required
+                        >
+                        <p id="selected-files" class="helper-text">No files selected</p>
+                        <button type="submit" id="upload-button">Upload and process</button>
+                    </form>
+
+                    <p id="upload-status" role="status" aria-live="polite"></p>
+                </div>
+            </div>
+
+            <div class="sidebar-bottom">
+                <div class="status-line">
+                    <span class="status-dot" id="pipeline-status-dot"></span>
+                    <span id="pipeline-status">Waiting for documents</span>
+                </div>
+                <p id="pipeline-description">Upload PDFs to create your searchable document index.</p>
+            </div>
+        </aside>
+
+        <main class="main-panel">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">YOUR DOCUMENTS, EXPLAINED</p>
+                    <h1>Research assistant</h1>
+                </div>
+                <div class="model-pill">
+                    <span class="status-dot"></span>
+                    Groq-powered RAG
+                </div>
+            </header>
+
+            <section class="chat-area" id="chatArea">
+                <div class="welcome" id="welcome">
+                    <div class="welcome-icon">✳</div>
+                    <p class="eyebrow">WELCOME TO ASKMYDOC</p>
+                    <h2 id="welcome-title">Your documents,<br>easier to understand.</h2>
+                    <p class="welcome-description" id="welcome-description">
+                        Upload one or more PDFs. We'll extract their text, prepare them for search,
+                        and let you ask questions once processing is complete.
+                    </p>
+                    <div id="processing-indicator" class="processing-indicator" hidden>
+                        <span class="spinner" aria-hidden="true"></span>
+                        <span id="processing-message">Processing your documents...</span>
+                    </div>
+                </div>
+
+                <div id="messages" class="messages"></div>
+            </section>
+
+            <div class="composer-wrapper">
+                <form id="questionForm" class="composer">
+                    <textarea
+                        id="questionInput"
+                        placeholder="Upload a PDF to start asking questions..."
+                        rows="1"
+                        required disabled></textarea>
+                    <button type="submit" id="sendButton" aria-label="Send question" disabled>
+                        <span>↑</span>
+                    </button>
+                </form>
+                <p class="disclaimer">
+                    AI-generated answers may be inaccurate. Check the source passages.
+                </p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const form = document.getElementById("questionForm");
+        const input = document.getElementById("questionInput");
+        const sendButton = document.getElementById("sendButton");
+        const messages = document.getElementById("messages");
+        const welcome = document.getElementById("welcome");
+        const chatArea = document.getElementById("chatArea");
+
+
+    function addMessage(role, text) {
+        const wrapper = document.createElement("article");
+        wrapper.className = `message ${role}`;
+
+        const label = document.createElement("div");
+        label.className = "message-label";
+        label.textContent = role === "user" ? "YOU" : "ASKMYDOC";
+
+        const content = document.createElement("div");
+        content.className = "message-content";
+
+        if (role === "assistant") {
+            content.innerHTML = DOMPurify.sanitize(marked.parse(text));
+        } else {
+            // Keep user messages as plain text for safety.
+            content.textContent = text;
+        }
+
+        wrapper.append(label, content);
+        messages.appendChild(wrapper);
+        chatArea.scrollTop = chatArea.scrollHeight;
+
+        return wrapper;
+}
+
+
+
+
+        const uploadForm = document.getElementById("upload-form");
+        const pdfFiles = document.getElementById("pdf-files");
+        const uploadButton = document.getElementById("upload-button");
+        const uploadStatus = document.getElementById("upload-status");
+        const selectedFiles = document.getElementById("selected-files");
+        const documentList = document.getElementById("document-list");
+        const pdfCount = document.getElementById("pdf-count");
+        const pipelineStatus = document.getElementById("pipeline-status");
+        const pipelineDescription = document.getElementById("pipeline-description");
+        const pipelineStatusDot = document.getElementById("pipeline-status-dot");
+        const processingIndicator = document.getElementById("processing-indicator");
+        const processingMessage = document.getElementById("processing-message");
+        const questionInput = document.getElementById("questionInput");
+        
+        const welcomeTitle = document.getElementById("welcome-title");
+        const welcomeDescription = document.getElementById("welcome-description");
+
+        let documentsReady = false;
+    
+
+        pdfFiles.addEventListener("change", () => {
+            const files = Array.from(pdfFiles.files);
+            selectedFiles.textContent = files.length
+                ? files.map(file => file.name).join(", ")
+                : "No files selected";
+            uploadStatus.textContent = "";
+        });
+
+        uploadForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const files = Array.from(pdfFiles.files);
+            if (!files.length) {
+                uploadStatus.textContent = "Please select at least one PDF.";
+                return;
+            }
+
+            const invalidFile = files.find(file => !file.name.toLowerCase().endsWith(".pdf"));
+            if (invalidFile) {
+                uploadStatus.textContent = "Only PDF files are supported.";
+                return;
+            }
+
+            const formData = new FormData();
+            files.forEach(file => formData.append("files", file));
+
+            uploadButton.disabled = true;
+            pdfFiles.disabled = true;
+            documentsReady = false;
+            questionInput.disabled = true;
+            sendButton.disabled = true;
+            uploadStatus.textContent = "";
+            pipelineStatus.textContent = "Processing documents";
+            pipelineDescription.textContent = "Extracting text and building the searchable index.";
+            processingIndicator.hidden = false;
+            processingMessage.textContent = "Uploading, extracting text, and creating embeddings...";
+            welcomeTitle.innerHTML = "Preparing your<br>documents.";
+            welcomeDescription.textContent =
+                "This may take a little while depending on the number and size of your PDFs.";
+
+            try {
+                const response = await fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "Upload failed.");
+                }
+
+                documentsReady = true;
+                questionInput.disabled = false;
+                sendButton.disabled = false;
+                questionInput.placeholder = "Ask anything about your uploaded documents...";
+                pipelineStatus.textContent = "Documents ready";
+                pipelineDescription.textContent =
+                    `${data.file_count} PDF(s) · ${data.chunk_count} searchable chunks`;
+                pipelineStatusDot.classList.add("ready");
+                uploadStatus.textContent =
+                    `Processing complete! ${data.file_count} PDF(s) ready; ` +
+                    `${data.chunk_count} chunks indexed.`;
+                processingIndicator.hidden = true;
+                welcomeTitle.innerHTML = "Your documents are<br>ready to explore.";
+                welcomeDescription.textContent =
+                    "Ask a question below. AskMyDoc will retrieve relevant passages from your uploaded PDFs.";
+                documentList.replaceChildren();
+                pdfCount.textContent =
+                    `${(data.files || []).length} PDF${(data.files || []).length === 1 ? "" : "s"}`;
+
+                (data.files || []).forEach(filename => {
+                    const card = document.createElement("div");
+                    card.className = "document-card";
+
+                    const icon = document.createElement("div");
+                    icon.className = "file-icon";
+                    icon.textContent = "PDF";
+
+                    const info = document.createElement("div");
+                    info.className = "document-info";
+
+                    const name = document.createElement("strong");
+                    name.textContent = filename;
+
+                    const detail = document.createElement("span");
+                    detail.textContent = "Processed and searchable";
+
+                    const dot = document.createElement("span");
+                    dot.className = "status-dot";
+
+                    info.append(name, detail);
+                    card.append(icon, info, dot);
+                    documentList.appendChild(card);
+                });
+
+                selectedFiles.textContent = "No files selected";
+                pdfFiles.value = "";
+            } catch (error) {
+                uploadStatus.textContent = error.message;
+                pipelineStatus.textContent = documentsReady ? "Documents ready" : "Upload failed";
+                pipelineDescription.textContent = documentsReady
+                    ? "Your current document index is still available."
+                    : "Check the error above and try again.";
+                processingIndicator.hidden = true;
+                welcomeTitle.innerHTML = documentsReady
+                    ? "Your documents are<br>ready to explore."
+                    : "Your documents,<br>easier to understand.";
+                welcomeDescription.textContent = documentsReady
+                    ? "Ask a question about your uploaded PDFs."
+                    : "Upload one or more PDFs. We'll prepare them for questions.";
+            } finally {
+                uploadButton.disabled = false;
+                pdfFiles.disabled = false;
+            }
+        });
+
+        function addSources(wrapper, sources) {
+            if (!sources || sources.length === 0) return;
+
+            const section = document.createElement("div");
+            section.className = "sources";
+
+            const heading = document.createElement("h4");
+            heading.textContent = "Retrieved source passages";
+            section.appendChild(heading);
+
+            sources.forEach((source, index) => {
+                const details = document.createElement("details");
+                details.className = "source-item";
+
+                const summary = document.createElement("summary");
+                summary.textContent =
+                    `Source ${index + 1} · ${source.source || "PDF"} · Page ${source.page} · Similarity ${source.score}`;
+
+                const excerpt = document.createElement("p");
+                excerpt.textContent = source.text;
+
+                details.append(summary, excerpt);
+                section.appendChild(details);
+            });
+
+            wrapper.appendChild(section);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        async function askQuestion(question) {
+            const cleanQuestion = question.trim();
+            if (!cleanQuestion) return;
+            if (!documentsReady) {
+                uploadStatus.textContent = "Please upload and process a PDF first.";
+                return;
+            }
+
+            welcome.hidden = true;
+            addMessage("user", cleanQuestion);
+            input.value = "";
+            input.style.height = "auto";
+            sendButton.disabled = true;
+
+            const loading = addMessage("assistant", "Searching your document and preparing an answer...");
+
+            try {
+                const response = await fetch("/ask", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question: cleanQuestion })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "The request failed.");
+                }
+
+                loading.querySelector(".message-content").innerHTML =
+                   DOMPurify.sanitize(marked.parse(data.answer || ""));
+                addSources(loading, data.sources);
+            } catch (error) {
+                loading.querySelector(".message-content").textContent =
+                    `Sorry, I couldn't complete that request. ${error.message}`;
+            } finally {
+                sendButton.disabled = false;
+                input.focus();
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }
+        }
+
+        form.addEventListener("submit", event => {
+            event.preventDefault();
+            askQuestion(input.value);
+        });
+
+        document.querySelectorAll(".suggestion").forEach(button => {
+            button.addEventListener("click", () => {
+                askQuestion(button.dataset.question);
+            });
+        });
+
+        input.addEventListener("input", () => {
+            input.style.height = "auto";
+            input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+        });
+
+        input.addEventListener("keydown", event => {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                form.requestSubmit();
+            }
+        });
+    </script>
+</body>
+</html>

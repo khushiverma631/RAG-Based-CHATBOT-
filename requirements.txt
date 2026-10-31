@@ -1,0 +1,13 @@
+
+Flask
+python-dotenv
+PyMuPDF
+sentence-transformers
+faiss-cpu
+langchain-core
+langchain-groq
+groq
+numpy
+torch
+transformers
+huggingface-hub
