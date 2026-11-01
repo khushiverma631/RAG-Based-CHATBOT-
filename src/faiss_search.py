@@ -52,7 +52,7 @@ def main():
     faiss.normalize_L2(query_embedding)
 
     # 8. Retrieve the three most relevant chunks
-    k = min(3, len(chunks))
+    k = min(5, len(chunks))
     scores, indices = index.search(query_embedding, k)
 
     print(f"\nQuestion: {question}")

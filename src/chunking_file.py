@@ -1,5 +1,5 @@
 
-def split_into_chunks(text, chunk_size=300, overlap=50):
+def split_into_chunks(text, chunk_size=500, overlap=50):
     """Split text into overlapping character-based chunks."""
 
     if chunk_size <= 0:

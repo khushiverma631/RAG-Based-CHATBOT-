@@ -15,7 +15,7 @@ if not api_key:
 #configures the model connection.
 llm = ChatGroq(  
     model="openai/gpt-oss-20b",
-    temperature=0.2,
+    temperature=0.5,
     max_tokens=200,
 )
 

@@ -47,26 +47,6 @@ def split_into_chunks(text, chunk_size=1000, overlap=150):
     return chunks
 
 
-# def ingest_pdf(pdf_path):
-#     """Extract a PDF and create chunks with page metadata."""
-#     pages = extract_pdf_pages(pdf_path)
-#     all_chunks = []
-
-#     for page in pages:
-#         page_chunks = split_into_chunks(page["text"])
-
-#         for chunk_index, chunk_text in enumerate(page_chunks):
-#             all_chunks.append({
-#                 "text": chunk_text,
-#                 "page": page["page"],
-#                 "chunk_index": chunk_index
-#             })
-
-#     return all_chunks
-
-
-
-
 #new change 
 
 

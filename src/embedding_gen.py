@@ -38,7 +38,7 @@ def main():
     similarities = util.cos_sim(question_embedding, embeddings)[0]
 
     # Step 6: Retrieve the three most similar chunks.
-    top_results = similarities.topk(min(3, len(chunks)))
+    top_results = similarities.topk(min(5, len(chunks)))
 
     print(f"\nQuestion: {question}")
 
